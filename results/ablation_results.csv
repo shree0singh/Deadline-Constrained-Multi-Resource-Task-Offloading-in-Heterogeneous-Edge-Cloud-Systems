@@ -1,0 +1,21 @@
+num_tasks,seed,variant,profit,accepted_tasks,runtime_ms,gap_to_lp
+150,3000,"1. Baseline Greedy",7977.94,112,0.07457,1.47257
+150,3000,"2. LPR Rounding (Static Weights)",7930.53,112,0.093942,2.058
+150,3000,"3. LPR Rounding (Congestion Dual Weights)",8139.55,114,0.09427,-0.523407
+150,3000,"4. LPR-NLS (Full Proposed + Local Search)",8257.96,119,2.01087,-1.98569
+150,3047,"1. Baseline Greedy",8152.08,120,0.101689,-0.136542
+150,3047,"2. LPR Rounding (Static Weights)",7889.15,115,0.111876,3.09316
+150,3047,"3. LPR Rounding (Congestion Dual Weights)",8084.82,118,0.118997,0.689708
+150,3047,"4. LPR-NLS (Full Proposed + Local Search)",8167.39,123,2.71193,-0.324535
+150,3094,"1. Baseline Greedy",8202.69,114,0.133389,0.345671
+150,3094,"2. LPR Rounding (Static Weights)",8204.6,115,0.180021,0.322519
+150,3094,"3. LPR Rounding (Congestion Dual Weights)",8205.89,115,0.148784,0.306759
+150,3094,"4. LPR-NLS (Full Proposed + Local Search)",8305.58,121,2.38911,-0.904377
+150,3141,"1. Baseline Greedy",7891.85,111,0.113406,-0.745134
+150,3141,"2. LPR Rounding (Static Weights)",7870.4,112,0.131828,-0.471319
+150,3141,"3. LPR Rounding (Congestion Dual Weights)",7946.36,112,0.121115,-1.44103
+150,3141,"4. LPR-NLS (Full Proposed + Local Search)",8061.08,117,1.89851,-2.90551
+150,3188,"1. Baseline Greedy",7872.92,116,0.149902,-0.146774
+150,3188,"2. LPR Rounding (Static Weights)",7888.86,118,0.128365,-0.3496
+150,3188,"3. LPR Rounding (Congestion Dual Weights)",7864.5,116,0.108355,-0.0397876
+150,3188,"4. LPR-NLS (Full Proposed + Local Search)",7952.93,120,1.62973,-1.16463

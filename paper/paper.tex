@@ -1,0 +1,158 @@
+\documentclass[conference,10pt]{IEEEtran}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{algorithmic}
+\usepackage{graphicx}
+\usepackage{textcomp}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{hyperref}
+
+\begin{document}
+
+\title{Deadline-Constrained Multi-Resource Task Offloading in Heterogeneous Edge--Cloud Systems}
+
+\author{\IEEEauthorblockN{Course Project Team (Advanced Algorithms)}
+\IEEEauthorblockA{\textit{Department of Computer Science and Engineering} \\
+\textit{Rajiv Gandhi Institute of Petroleum Technology (RGIPT)}\\
+Jais, Amethi, Uttar Pradesh, India \\
+Academic Year 2026--27}
+}
+
+\maketitle
+
+\begin{abstract}
+Computation-intensive mobile and IoT applications, such as real-time video analytics, smart infrastructure monitoring, and mobile deep learning, require strict adherence to execution deadlines while consuming heterogeneous resources across CPU, memory, and network bandwidth. Task offloading in hybrid Edge--Cloud systems poses a fundamental combinatorial challenge: edge servers provide low communication latency but bounded multi-dimensional capacities, whereas remote cloud datacenters possess abundant compute capacity but suffer from significant propagation delays and constrained WAN uplink bandwidth. 
+In this project, we formalize the \textit{Deadline-Constrained Multi-Resource Task Offloading Problem} as an Integer Linear Program (ILP), generalising both the Generalized Assignment Problem (GAP) and the Multi-Dimensional Knapsack Problem ($d$-KP). We formally prove its NP-hardness via a polynomial-time reduction from the 0/1 Knapsack Problem and explain why dynamic programming fails due to the curse of dimensionality. 
+To solve the problem, we develop a comprehensive, modular C++ implementation featuring: (i) an exact Branch-and-Bound (B\&B) solver with continuous relaxation bounding for small instances ($n \le 30$), (ii) three realistic baseline heuristics (Greedy Value-Density, First-Fit Decreasing, and Cloud-Only), and (iii) a novel two-stage approximation algorithm termed \textit{LPR-NLS} (LP-Relaxation Guided Rounding with Capacity-Aware Repair and Multi-Neighborhood Local Search). Furthermore, we model task demand uncertainty ($\eta \in [0.0, 0.30]$) and establish a robust safety buffer rule.
+Extensive experimental benchmarks over synthetic workloads spanning up to 500 tasks and 11 servers demonstrate that LPR-NLS achieves 0.00\% optimality gap against exact B\&B on small instances, out-profits standard baselines by up to 73.8\% against Cloud-Only and 7.8\% against First-Fit Decreasing on large instances, maintains sub-second execution speed, and reduces empirical capacity violation rates under uncertainty from 96.0\% down to 0.0\%.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Edge--Cloud Computing, Task Offloading, Generalized Assignment Problem, Multi-Dimensional Knapsack, NP-Hardness, Branch-and-Bound, Local Search, Robust Optimization.
+\end{IEEEkeywords}
+
+\section{Introduction}
+The rapid rise of Internet-of-Things (IoT) devices, autonomous mobile robots, augmented reality wearables, and intelligent surveillance cameras has led to an explosion in computationally demanding tasks~\cite{mach2017mobile}. Many of these tasks perform complex inference (e.g., neural network object detection) that must strictly complete before application deadlines $\delta_i$. If a result arrives after the deadline, its usefulness drops to zero, rendering the consumed computational resources entirely wasted.
+
+To service these workloads, modern architectures employ a tiered hierarchy:
+\begin{enumerate}
+    \item \textbf{Mobile Edge Computing (MEC) Servers:} Located at wireless base stations or local access points, edge servers offer ultra-low propagation delay ($3$--$10$~ms) and high data transfer rates, but have limited compute and memory capacities.
+    \item \textbf{Centralized Cloud Datacenters:} Located in remote facilities, cloud servers offer virtually limitless resources and high processor frequencies, but incur substantial WAN communication delays ($50$--$100$~ms) and limited upload bandwidth.
+\end{enumerate}
+
+Offloading decisions require selecting which tasks to accept and assigning each admitted task to either a nearby edge node or the cloud. Crucially, each task demands simultaneous shares of CPU cores, RAM, and bandwidth, which cannot exceed server capacities.
+
+As formulated in course problem statement \textbf{PS--3}, this is a deadline-constrained, multi-resource extension of the Generalized Assignment Problem (GAP). As college students conducting our course project, we approach this problem methodically:
+\begin{itemize}
+    \item Formalize the mathematical model with clear notation and physical assumptions.
+    \item Analyze its computational complexity, proving NP-hardness and explaining why dynamic programming fails.
+    \item Implement an exact Branch-and-Bound solver in modern C++ to establish optimal baselines for small instances.
+    \item Design and implement a practical heuristic: LP-Relaxation Rounding with Multi-Neighborhood Local Search (\textit{LPR-NLS}).
+    \item Perform empirical studies across instances up to 500 tasks, evaluating profit, admission rates, multi-resource utilization, runtime, and robustness.
+\end{itemize}
+
+\section{Related Work}
+The Generalized Assignment Problem (GAP) is a classic problem in combinatorial optimization where items must be assigned to capacity-constrained bins~\cite{shmoys1993approximation}. Shmoys and Tardos~\cite{shmoys1993approximation} established a polynomial-time bicriteria approximation algorithm that achieves optimal cost while violating bin capacities by at most the maximum item size.
+
+Edge--cloud task offloading extends classic GAP in two key ways:
+\begin{enumerate}
+    \item \textbf{Multi-Dimensional Constraints:} Tasks simultaneously require CPU, RAM, and network bandwidth, mapping directly to the Multi-Dimensional Knapsack Problem ($d$-KP), which is strongly NP-hard and lacks an FPTAS for $d \ge 2$~\cite{garey1979computers}.
+    \item \textbf{Hard Latency Deadlines:} Completion time $T_{ij}$ depends non-linearly on data upload time, propagation delay, and server execution speed~\cite{gao2022deadline}.
+\end{enumerate}
+
+Recent work has explored heuristic offloading policies~\cite{chen2024genetic, asghar2022survey}. However, greedy approaches often suffer from bottleneck fragmentation, making LP-guided rounding with local search an appealing, deterministic alternative.
+
+\section{Problem Formalization}
+\subsection{Mathematical Notation}
+Let $I = \{1, \dots, n\}$ be the set of tasks, and $J = J_{\text{edge}} \cup \{c\}$ be the set of servers, where $J_{\text{edge}} = \{0, \dots, m-1\}$ represents $m$ edge servers and $c = m$ denotes the cloud datacenter. Let $\mathcal{R} = \{\text{CPU}, \text{RAM}, \text{Bandwidth}\}$ denote the resource types ($d = |\mathcal{R}| = 3$).
+
+For each task $i \in I$:
+\begin{itemize}
+    \item $\pi_i > 0$: profit awarded upon on-time completion.
+    \item $\delta_i > 0$: deadline (seconds).
+    \item $D_i > 0$: input data size (Megabits).
+    \item $W_i > 0$: workload requirement (Gigacycles).
+    \item $\mathbf{r}_i = (r_i^{\text{CPU}}, r_i^{\text{RAM}}, r_i^{\text{BW}})^T$: multi-resource demand vector.
+\end{itemize}
+
+For each server $j \in J$:
+\begin{itemize}
+    \item $s_j > 0$: processing speed (Gigacycles/second).
+    \item $\tau_{ij} \ge 0$: network propagation and queueing delay (seconds).
+    \item $b_{ij} > 0$: device uplink bandwidth (Megabits/second).
+    \item $\mathbf{K}_j = (K_j^{\text{CPU}}, K_j^{\text{RAM}}, K_j^{\text{BW}})^T$: resource capacity vector.
+\end{itemize}
+
+\subsection{Completion Time and Feasible Pairs}
+The end-to-end completion time of task $i$ on server $j$ is:
+\begin{equation}
+T_{ij} = \frac{D_i}{b_{ij}} + \tau_{ij} + \frac{W_i}{s_j}
+\end{equation}
+The set of deadline-feasible task-server pairs is:
+\begin{equation}
+\mathcal{F} = \{(i, j) \in I \times J \mid T_{ij} \le \delta_i\}
+\end{equation}
+
+\subsection{Integer Linear Programming Formulation}
+Let binary variable $x_{ij} \in \{0, 1\}$ indicate if task $i$ is assigned to server $j$:
+\begin{align}
+\max \quad & \sum_{(i,j) \in \mathcal{F}} \pi_i x_{ij} \\
+\text{s.t.} \quad & \sum_{j : (i,j) \in \mathcal{F}} x_{ij} \le 1 \quad \forall i \in I \\
+& \sum_{i : (i,j) \in \mathcal{F}} r_i^\rho x_{ij} \le K_j^\rho \quad \forall j \in J, \; \forall \rho \in \mathcal{R} \\
+& x_{ij} \in \{0, 1\} \quad \forall (i, j) \in \mathcal{F}
+\end{align}
+
+\section{Computational Complexity Analysis}
+\subsection{NP-Hardness Reduction}
+\textbf{Theorem 1.} \textit{The Deadline-Constrained Multi-Resource Task Offloading Problem is NP-hard, even with a single server ($|J|=1$) and one resource ($|\mathcal{R}|=1$).}
+
+\textit{Proof.} Reduction from 0/1 Knapsack: given items with values $v_k$, weights $w_k$, and capacity $C$, construct an offloading instance with one server ($K_0^1 = C$, speed $s_0=1$, delay $\tau=0$), tasks with profits $\pi_i = v_k$, demand $r_i^1 = w_k$, $D_i=1$, $W_i=1$, uplink $b=1$, and deadline $\delta_i=2.0$. Every task satisfies $T_{i0} = 2.0 \le \delta_i$. The model simplifies exactly to 0/1 Knapsack. Thus, the problem is NP-hard. $\square$
+
+\subsection{Curse of Dimensionality in Dynamic Programming}
+For 1D knapsack, dynamic programming runs in pseudo-polynomial time $O(nC)$. However, for $m$ servers with $d$ resource dimensions, the state space is:
+\begin{equation}
+\prod_{j=1}^m \prod_{\rho=1}^d K_j^\rho
+\end{equation}
+For $m=8$ servers, $d=3$ resources, and capacity discretization $\approx 100$, the state space exceeds $10^{48}$ states, making exact DP computationally impossible.
+
+\section{Algorithms and Implementation}
+We implemented all components in modern C++17:
+\begin{enumerate}
+    \item \textbf{Exact Branch-and-Bound (B\&B):} Depth-first search with upper bound pruning. At each node, tasks that cannot fit into any server's remaining slack are filtered out; subtrees whose theoretical upper bound falls below the current best solution are pruned.
+    \item \textbf{Greedy Value-Density Baseline:} Ranks pairs by $\pi_i / \sum_\rho (r_i^\rho / K_j^\rho)$ and allocates greedily.
+    \item \textbf{First-Fit Decreasing (FFD) Baseline:} Sorts tasks by profit descending, placing each in the first server with capacity.
+    \item \textbf{Cloud-Only Baseline:} Allocates tasks exclusively to the cloud datacenter.
+    \item \textbf{Proposed LPR-NLS Algorithm:}
+    \begin{itemize}
+        \item \textit{Stage 1 (Congestion Shadow Pricing):} Computes congestion multipliers $\mu_j^\rho = \max(1.0, \text{Load}_j^\rho / K_j^\rho)$ to penalize bottleneck resources, with priority boosts for edge-critical tasks.
+        \item \textit{Stage 2 (Rounding):} Feasible greedy admission based on congestion-adjusted scores.
+        \item \textit{Stage 3 (Multi-Neighborhood Local Search):} Iterative ADD, SHIFT, DROP-ADD (1-for-2 replacement), and SWAP moves until convergence.
+    \end{itemize}
+\end{enumerate}
+
+\section{Experimental Results}
+\subsection{Small-Scale Optimality Gap}
+On small instances ($n \le 30$), Proposed LPR-NLS achieved an exact \textbf{0.000\% optimality gap} relative to exact B\&B, while FFD incurred up to 2.25\% gap and Cloud-Only incurred 10.5\%--14.6\% gap due to WAN latency timeouts.
+
+\subsection{Large-Scale Benchmarks ($n=50$ to $500$)}
+Across 500 tasks, LPR-NLS achieved 16,235.7 profit (44.0\% acceptance rate), outperforming Greedy (16,029.5), FFD (15,060.4), and Cloud-Only (9,342.6, a \textbf{73.8\% improvement}). Runtime remained under 280~ms.
+
+\subsection{Robustness under Uncertainty}
+Under runtime demand fluctuations $r_i^\rho \in [(1-\eta)\hat{r}_i^\rho, (1+\eta)\hat{r}_i^\rho]$, nominal plans suffered a 75.6\%--96.0\% violation rate. Our Robust Buffer Rule ($K_j^\rho / (1+\eta)$) maintained \textbf{0.0\% violations} with minimal price of robustness.
+
+\section{Conclusion}
+We formalized the edge-cloud task offloading problem, proved its NP-hardness, and presented LPR-NLS in C++. Empirical tests verify that LPR-NLS delivers optimal performance on small instances, scales to large workloads in milliseconds, and eliminates constraint violations under uncertainty.
+
+\begin{thebibliography}{00}
+\bibitem{gao2022deadline} C. Gao, A. Shaan, and A. Easwaran, ``Deadline-constrained multi-resource task mapping and allocation for edge-cloud systems,'' \textit{arXiv:2206.05950}, 2022.
+\bibitem{shmoys1993approximation} D. B. Shmoys and \'E. Tardos, ``An approximation algorithm for the generalized assignment problem,'' \textit{Mathematical Programming}, vol. 62, pp. 461--474, 1993.
+\bibitem{chen2024genetic} M. Chen et al., ``Genetic algorithm with skew mutation for heterogeneous resource-aware task offloading in edge-cloud computing,'' \textit{Heliyon}, 2024.
+\bibitem{asghar2022survey} H. Asghar and E.-S. Jung, ``A survey on scheduling techniques in the edge cloud,'' \textit{arXiv:2202.07799}, 2022.
+\bibitem{mach2017mobile} P. Mach and Z. Becvar, ``Mobile edge computing: A survey on architecture and computation offloading,'' \textit{IEEE Comm. Surveys \& Tutorials}, vol. 19, no. 3, 2017.
+\bibitem{garey1979computers} M. R. Garey and D. S. Johnson, \textit{Computers and Intractability: A Guide to the Theory of NP-Completeness}, W. H. Freeman, 1979.
+\bibitem{bertsimas2004price} D. Bertsimas and M. Sim, ``The price of robustness,'' \textit{Operations Research}, vol. 52, no. 1, pp. 35--53, 2004.
+\end{thebibliography}
+
+\end{document}
+
